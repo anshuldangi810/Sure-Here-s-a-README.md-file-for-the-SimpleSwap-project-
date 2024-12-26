@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simple Swap</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.6.1/web3.min.js"></script>
+  </head>
+  <body>
+    <h1>Simple Swap dApp</h1>
+
+    <h2>Swap Tokens</h2>
+    <label for="swapAmount">Amount of Token A to Swap:</label>
+    <input type="number" id="swapAmount" placeholder="Amount to Swap" />
+    <button onclick="swapTokens()">Swap</button>
+    <br />
+    <p id="swapResult"></p>
+
+    <h2>Add Liquidity</h2>
+    <label for="addLiquidityA">Amount of Token A to Add:</label>
+    <input type="number" id="addLiquidityA" placeholder="Amount of Token A" />
+    <br />
+    <label for="addLiquidityB">Amount of Token B to Add:</label>
+    <input type="number" id="addLiquidityB" placeholder="Amount of Token B" />
+    <br />
+    <button onclick="addLiquidity()">Add Liquidity</button>
+    <p id="addLiquidityResult"></p>
+
+    <h2>Liquidity Status</h2>
+    <button onclick="getLiquidity()">Get Liquidity</button>
+    <p id="liquidityStatus"></p>
+
+    <h2>Swap Rate</h2>
+    <p id="swapRate"></p>
+
+    <h2>Change Swap Rate (Admin Only)</h2>
+    <label for="newRate">New Swap Rate (Token A to Token B):</label>
+    <input type="number" id="newRate" placeholder="New Swap Rate" />
+    <button onclick="setSwapRate()">Set Swap Rate</button>
+
+    <script>
+      // Set up Web3.js
+      let web3;
+      let contract;
+      let account;
+      let contractAddress = "0x54726d0c0B432051F6d34ad4C8f302A82cF23680";
+      let tokenAAddress = "0x1DFce6161852893c98dF58a642174Fe460D5746F";
+      let tokenBAddress = "0xa69Ec0AEf8eb61aD71cEd30c0CDDd2af029714E7";
+      let contractABI = [
+        {
+          inputs: [
+            {
+              internalType: "address",
+              name: "account",
+              type: "address",
+            },
+          ],
+          name: "balanceOf",
+          outputs: [
+            {
+              internalType: "uint256",
+              name: "",
+              type: "uint256",
+            },
+          ],
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              internalType: "address",
+              name: "recipient",
+              type: "address",
+            },
+            {
+              internalType: "uint256",
+              name: "amount",
+              type: "uint256",
+            },
+          ],
+          name: "transfer",
+          outputs: [
+            {
+              internalType: "bool",
+              name: "",
+              type: "bool",
+            },
+          ],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          inputs: [
+            {
+              internalType: "address",
+              name: "sender",
+              type: "address",
+            },
+            {
+              internalType: "address",
+              name: "recipient",
+              type: "address",
+            },
+            {
+              internalType: "uint256",
+              name: "amount",
+              type: "uint256",
+            },
+          ],
+          name: "transferFrom",
+          outputs: [
+            {
+              internalType: "bool",
+              name: "",
+              type: "bool",
+            },
+          ],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+      ];
+
+      window.onload = async function () {
+        if (window.ethereum) {
+          web3 = new Web3(window.ethereum);
+          await window.ethereum.enable();
+          account = (await web3.eth.getAccounts())[0];
+
+          // Initialize the contract
+          contract = new web3.eth.Contract(contractABI, contractAddress);
+          getSwapRate();
+        } else {
+          alert("Please install MetaMask!");
+        }
+      };
+
+      async function swapTokens() {
+        const amountIn = document.getElementById("swapAmount").value;
+
+        if (amountIn <= 0) {
+          alert("Please enter a valid amount.");
+          return;
+        }
+
+        const amountInWei = web3.utils.toWei(amountIn, "ether");
+
+        try {
+          const allowance = await contract.methods
+            .tokenA()
+            .call({ from: account });
+          const tokenA = new web3.eth.Contract(erc20ABI, tokenAAddress);
+          const allowanceAmount = await tokenA.methods
+            .allowance(account, contractAddress)
+            .call();
+
+          if (parseInt(allowanceAmount) < amountInWei) {
+            alert("Allowance is too low. Please approve the contract.");
+            return;
+          }
+
+          await contract.methods
+            .swapTokens(amountInWei)
+            .send({ from: account });
+          document.getElementById(
+            "swapResult"
+          ).innerText = `Successfully swapped ${amountIn} Token A for ${amountOut} Token B.`;
+        } catch (error) {
+          console.error(error);
+          alert("An error occurred while swapping tokens.");
+        }
+      }
+
+      async function addLiquidity() {
+        const amountA = document.getElementById("addLiquidityA").value;
+        const amountB = document.getElementById("addLiquidityB").value;
+
+        if (amountA <= 0 || amountB <= 0) {
+          alert("Please enter valid amounts for both Token A and Token B.");
+          return;
+        }
+
+        const amountAWei = web3.utils.toWei(amountA, "ether");
+        const amountBWei = web3.utils.toWei(amountB, "ether");
+
+        try {
+          const tokenA = new web3.eth.Contract(erc20ABI, tokenAAddress);
+          const tokenB = new web3.eth.Contract(erc20ABI, tokenBAddress);
+
+          // Approve the contract to spend Token A and Token B
+          await tokenA.methods
+            .approve(contractAddress, amountAWei)
+            .send({ from: account });
+          await tokenB.methods
+            .approve(contractAddress, amountBWei)
+            .send({ from: account });
+
+          // Add liquidity
+          await contract.methods
+            .addLiquidity(amountAWei, amountBWei)
+            .send({ from: account });
+          document.getElementById("addLiquidityResult").innerText =
+            "Liquidity added successfully!";
+        } catch (error) {
+          console.error(error);
+          alert("An error occurred while adding liquidity.");
+        }
+      }
+
+      async function getLiquidity() {
+        const liquidity = await contract.methods.getLiquidity().call();
+        document.getElementById(
+          "liquidityStatus"
+        ).innerText = `Liquidity in Token A: ${web3.utils.fromWei(
+          liquidity[0],
+          "ether"
+        )} | Liquidity in Token B: ${web3.utils.fromWei(
+          liquidity[1],
+          "ether"
+        )}`;
+      }
+
+      async function getSwapRate() {
+        const rate = await contract.methods.swapRate().call();
+        document.getElementById(
+          "swapRate"
+        ).innerText = `Current Swap Rate: 1 Token A = ${rate} Token B`;
+      }
+
+      async function setSwapRate() {
+        const newRate = document.getElementById("newRate").value;
+
+        if (newRate <= 0) {
+          alert("Please enter a valid rate.");
+          return;
+        }
+
+        try {
+          await contract.methods.setSwapRate(newRate).send({ from: account });
+          alert("Swap rate updated successfully!");
+          getSwapRate();
+        } catch (error) {
+          console.error(error);
+          alert("Only the owner can change the swap rate.");
+        }
+      }
+    </script>
+  </body>
+</html>
